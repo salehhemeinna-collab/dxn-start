@@ -38,12 +38,19 @@ await boot()
 }}
 async function boot(){
 if(!db){auth();return}
-const {data:{session}}=await db.auth.getSession();
-if(!session){document.querySelector("#logoutBtn").classList.add("hidden");auth();return}
-document.querySelector("#logoutBtn").classList.remove("hidden");
-const {data:m}=await db.from("dxn_start_members").select("*").eq("auth_user_id",session.user.id).maybeSingle();member=m;
-const {data:a}=await db.from("dxn_start_admins").select("user_id").eq("user_id",session.user.id).maybeSingle();isAdmin=Boolean(a);
-render()
+if(!document.querySelector("#screen").innerHTML.trim()) auth();
+let session=null;
+try{
+const result=await Promise.race([
+db.auth.getSession(),
+new Promise((_,reject)=>setTimeout(()=>reject(new Error("Supabase connection timeout")),8000))
+]);
+session=result?.data?.session||null;
+}catch(e){
+document.querySelector("#logoutBtn").classList.add("hidden");
+auth();
+toast(e.message||"Connection error");
+return
 }
 async function dashboard(){
 const [{data:ts},{data:ps},{data:pts}]=await Promise.all([db.from("dxn_start_training").select("*").eq("is_published",true).order("sort_order"),db.from("dxn_start_progress").select("training_id,completed").eq("member_id",member.id),db.from("dxn_start_points").select("points").eq("member_id",member.id)]);
