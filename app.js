@@ -30,11 +30,9 @@ try{
 const emailEl=document.querySelector("#email"),passEl=document.querySelector("#password");
 if(mode==="login"){const {error}=await db.auth.signInWithPassword({email:emailEl.value.trim(),password:passEl.value});if(error)throw error}
 else{
-const payload={full_name:document.querySelector("#name").value.trim(),whatsapp:document.querySelector("#wa").value.trim(),dxn_member_id:document.querySelector("#dxnid").value.trim(),city:document.querySelector("#city").value.trim(),goal:document.querySelector("#goal").value,daily_time:document.querySelector("#time").value};
-const {data,error}=await db.auth.signUp({email:emailEl.value.trim(),password:passEl.value});if(error)throw error;
+const payload={full_name:document.querySelector("#name").value.trim(),age:Number(document.querySelector("#age").value),whatsapp:document.querySelector("#wa").value.trim(),dxn_member_id:document.querySelector("#dxnid").value.trim(),city:document.querySelector("#city").value.trim(),goal:document.querySelector("#goal").value,daily_time:document.querySelector("#time").value,language:lang};
+const {data,error}=await db.auth.signUp({email:emailEl.value.trim(),password:passEl.value,options:{data:payload}});if(error)throw error;
 if(!data.user)throw new Error("Veuillez vérifier votre e-mail / يرجى تأكيد البريد الإلكتروني");
-const {error:e}=await db.from("dxn_start_members").insert({...payload,auth_user_id:data.user.id});if(e)throw e;
-}
 await boot()
 }catch(e){toast(e.message||"Error")}
 }}
