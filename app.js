@@ -33,7 +33,7 @@ const tr = {
     activeTask:"المهمة مفعلة", messageName:"اسم الرسالة", bodyAr:"نص الرسالة بالعربية", bodyFr:"نص الرسالة بالفرنسية",
     followAt:"موعد المتابعة", channel:"القناة", notes:"ملاحظات", status:"الحالة", newFollow:"متابعة جديدة",
     details:"التفاصيل", noVideo:"لا يوجد فيديو", noPdf:"لا يوجد PDF", watch:"مشاهدة الفيديو",
-    openPdf:"فتح المادة PDF", finish:"إتمام التدريب +10 نقاط", trainingContent:"محتوى التدريب",
+    openPdf:"فتح المادة PDF", finish:"إتمام التدريب +10 نقاط", trainingContent:"محتوى التدريب", trainingLocked:"🔒 أكمل التدريب السابق أولًا", startTraining:"ابدأ التدريب", learningSummary:"ملخص ما استفدت منه", learningSummaryHint:"اكتب باختصار أهم ما تعلمته وما الذي ستطبقه بعد هذا التدريب.", videoNotFinished:"يجب إكمال الفيديو قبل إرسال الملخص.", videoProgress:"تقدم الفيديو", speedLimit:"السرعة القصوى 1.5×", videoCompleted:"تم إكمال الفيديو ✓",
     changeStatus:"تغيير الحالة", addFollowup:"إضافة متابعة", saveMember:"حفظ العضو", adminOnly:"للمسؤول فقط",
     confirmDelete:"هل تريد محو هذا العنصر؟", error:"حدث خطأ", memberSaved:"تم تحديث العضو",
     taskSaved:"تم تحديث المهمة", messageSaved:"تم تحديث الرسالة", followSaved:"تم حفظ المتابعة",
@@ -61,7 +61,7 @@ const tr = {
     taskTitleFr:"Titre français", day:"Jour", taskPoints:"Points", activeTask:"Tâche active", messageName:"Nom du message",
     bodyAr:"Texte arabe", bodyFr:"Texte français", followAt:"Date du suivi", channel:"Canal", notes:"Notes", status:"Statut",
     newFollow:"Nouveau suivi", details:"Détails", noVideo:"Pas de vidéo", noPdf:"Pas de PDF", watch:"Voir la vidéo",
-    openPdf:"Ouvrir le PDF", finish:"Terminer la formation +10 points", trainingContent:"Contenu de la formation",
+    openPdf:"Ouvrir le PDF", finish:"Terminer la formation +10 points", trainingContent:"Contenu de la formation", trainingLocked:"🔒 Terminez d’abord la formation précédente", startTraining:"Commencer la formation", learningSummary:"Résumé de ce que vous avez appris", learningSummaryHint:"Écrivez brièvement ce que vous avez appris et ce que vous allez appliquer.", videoNotFinished:"Vous devez terminer la vidéo avant d’envoyer le résumé.", videoProgress:"Progression vidéo", speedLimit:"Vitesse maximale 1,5×", videoCompleted:"Vidéo terminée ✓",
     changeStatus:"Changer le statut", addFollowup:"Ajouter un suivi", saveMember:"Enregistrer le membre", adminOnly:"Administrateur seulement",
     confirmDelete:"Supprimer cet élément ?", error:"Une erreur est survenue", memberSaved:"Membre mis à jour", taskSaved:"Tâche mise à jour",
     messageSaved:"Message mis à jour", followSaved:"Suivi enregistré", all:"Tous", completedTraining:"Formations terminées",
@@ -115,7 +115,7 @@ async function boot(){
   document.querySelector("#logoutBtn").classList.remove("hidden");
   const [{data:m,error:me},{data:a,error:ae}]=await Promise.all([db.from("dxn_start_members").select("*").eq("auth_user_id",session.user.id).maybeSingle(),db.from("dxn_start_admins").select("user_id").eq("user_id",session.user.id).maybeSingle()]);
   if(me){toast(errText(me));return;} if(ae){toast(errText(ae));return;}
-  member=m;isAdmin=Boolean(a); if(!member){await db.auth.signOut();auth("login",lang==="ar"?"لم يتم العثور على ملف العضو":"Profil membre introuvable");return;} if(isAdmin){renderAdminOnly();return;} await dashboard();
+  member=m;isAdmin=Boolean(a); if(!member){await db.auth.signOut();auth("login",lang==="ar"?"لم يتم العثور على ملف العضو":"Profil membre introuvable");return;} if(isAdmin){renderAdminOnly();return;}
 }
 
 function renderAdminOnly(){
@@ -147,9 +147,11 @@ async function loadTab(type){
     const [{data:list,error:e1},{data:progress,error:e2}]=await Promise.all([db.from("dxn_start_training").select("*").eq("is_published",true).order("sort_order"),db.from("dxn_start_progress").select("training_id,completed").eq("member_id",member.id)]);
     if(e1||e2){panel.innerHTML=`<div class="card">${esc(errText(e1||e2))}</div>`;return;}
     trainingCache=list||[];const done=new Set((progress||[]).filter(x=>x.completed).map(x=>x.training_id));
-    panel.innerHTML=`<div class="list">${trainingCache.map(q=>`<div class="item"><b>${esc(lang==="ar"?q.title_ar:q.title_fr)}</b><p class="small muted">${esc(lang==="ar"?q.description_ar:q.description_fr)}</p><div class="row"><button class="btn" data-open-training="${q.id}">📖 ${T("open")}</button><button class="btn alt" data-finish-training="${q.id}">${done.has(q.id)?T("done"):(lang==="ar"?"إكمال التدريب":"Terminer")}</button></div></div>`).join("")||T("no")}</div>`;
-    panel.querySelectorAll("[data-open-training]").forEach(b=>b.onclick=()=>openTraining(b.dataset.openTraining));
-    panel.querySelectorAll("[data-finish-training]").forEach(b=>b.onclick=()=>finishTraining(b.dataset.finishTraining));return;
+    panel.innerHTML=`<div class="list">${trainingCache.map((q,i)=>{
+      const unlocked=i===0 || done.has(trainingCache[i-1].id); const isDone=done.has(q.id);
+      return `<div class="item" style="opacity:${unlocked||isDone?1:.65}"><div class="row between"><b>${i+1}. ${esc(lang==="ar"?q.title_ar:q.title_fr)}</b>${isDone?`<span class="pill">✓ ${T("done")}</span>`:(!unlocked?`<span class="pill">🔒</span>`:"")}</div><p class="small muted">${esc(lang==="ar"?q.description_ar:q.description_fr)}</p><div class="row">${isDone?`<button class="btn alt" disabled>${T("done")}</button>`:unlocked?`<button class="btn" data-open-training="${q.id}">📖 ${T("startTraining")}</button>`:`<button class="btn alt" disabled>${T("trainingLocked")}</button>`}</div></div>`;
+    }).join("")||T("no")}</div>`;
+    panel.querySelectorAll("[data-open-training]").forEach(b=>b.onclick=()=>openTraining(b.dataset.openTraining));return;
   }
   if(type==="tasks"){
     const [{data:list,error:e1},{data:completed,error:e2}]=await Promise.all([db.from("dxn_start_tasks").select("*").eq("is_active",true).order("day_number"),db.from("dxn_start_task_completions").select("task_id").eq("member_id",member.id)]);
@@ -163,53 +165,66 @@ async function loadTab(type){
   if(type==="admin"&&isAdmin)await adminPanel(panel);
 }
 
+let ytApiPromise=null;
+function loadYouTubeApi(){
+  if(window.YT&&window.YT.Player)return Promise.resolve();
+  if(ytApiPromise)return ytApiPromise;
+  ytApiPromise=new Promise(resolve=>{
+    const prev=window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady=()=>{if(typeof prev==="function")prev();resolve();};
+    const s=document.createElement("script");s.src="https://www.youtube.com/iframe_api";s.async=true;document.head.appendChild(s);
+  });
+  return ytApiPromise;
+}
+
 async function openTraining(id){
   const q=trainingCache.find(x=>x.id===id);if(!q)return;
-  const title=lang==="ar"?q.title_ar:q.title_fr;
-  const description=lang==="ar"?q.description_ar:q.description_fr;
-  const content=lang==="ar"?q.content_ar:"";
-  const keyPoints=lang==="ar"?q.key_points_ar:"";
-  const action=lang==="ar"?q.action_ar:"";
-  const reflection=lang==="ar"?q.reflection_ar:"";
-  const sourceNote=lang==="ar"?q.source_note_ar:"";
-  const modal=document.createElement("div");
-  modal.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.58);z-index:9999;padding:16px;overflow:auto";
-  const card=document.createElement("div");
-  card.style.cssText="max-width:820px;margin:25px auto;background:#fff;border-radius:20px;padding:20px;direction:"+(lang==="ar"?"rtl":"ltr");
-  const close=document.createElement("button");close.className="btn alt";close.textContent="✕";close.onclick=()=>modal.remove();
-  card.appendChild(close);
-  const h=document.createElement("h2");h.textContent=title;card.appendChild(h);
-  const intro=document.createElement("p");intro.textContent=description||"";intro.className="muted";intro.style.lineHeight="1.9";card.appendChild(intro);
-  if(content){
-    const box=document.createElement("div");box.className="card";box.style.cssText="margin-top:14px;line-height:2;font-size:16px";
-    content.split("\\n").forEach(line=>{const p=document.createElement("p");p.textContent=line;box.appendChild(p);});card.appendChild(box);
+  const index=trainingCache.findIndex(x=>x.id===id);
+  if(index>0){
+    const prevId=trainingCache[index-1].id;
+    const {data:prev}=await db.from("dxn_start_progress").select("completed").eq("member_id",member.id).eq("training_id",prevId).maybeSingle();
+    if(!prev?.completed){toast(T("trainingLocked"));return;}
   }
-  if(keyPoints){
-    const box=document.createElement("div");box.className="card";box.style.marginTop="14px";
-    const h3=document.createElement("h3");h3.textContent=lang==="ar"?"أهم ما يجب أن تتذكر":"Points clés";box.appendChild(h3);
-    keyPoints.split("\\n").forEach(line=>{const p=document.createElement("p");p.textContent=line;box.appendChild(p);});card.appendChild(box);
-  }
+  const title=lang==="ar"?q.title_ar:q.title_fr, description=lang==="ar"?q.description_ar:q.description_fr;
+  const content=lang==="ar"?q.content_ar:"", keyPoints=lang==="ar"?q.key_points_ar:"", action=lang==="ar"?q.action_ar:"", reflection=lang==="ar"?q.reflection_ar:"", sourceNote=lang==="ar"?q.source_note_ar:"";
+  const modal=document.createElement("div");modal.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.58);z-index:9999;padding:16px;overflow:auto";
+  const card=document.createElement("div");card.style.cssText="max-width:820px;margin:25px auto;background:#fff;border-radius:20px;padding:20px;direction:"+(lang==="ar"?"rtl":"ltr");
+  const close=document.createElement("button");close.className="btn alt";close.textContent="✕";close.onclick=()=>modal.remove();card.appendChild(close);
+  const h=document.createElement("h2");h.textContent=title;card.appendChild(h);const intro=document.createElement("p");intro.textContent=description||"";intro.className="muted";intro.style.lineHeight="1.9";card.appendChild(intro);
+  if(content){const box=document.createElement("div");box.className="card";box.style.cssText="margin-top:14px;line-height:2;font-size:16px";content.split("\n").forEach(line=>{const p=document.createElement("p");p.textContent=line;box.appendChild(p);});card.appendChild(box);}
+  if(keyPoints){const box=document.createElement("div");box.className="card";box.style.marginTop="14px";const h3=document.createElement("h3");h3.textContent=lang==="ar"?"أهم ما يجب أن تتذكر":"Points clés";box.appendChild(h3);keyPoints.split("\n").forEach(line=>{const p=document.createElement("p");p.textContent=line;box.appendChild(p);});card.appendChild(box);}
+  let videoCompleted=!q.video_url, watchedSeconds=0, durationSeconds=0, player=null, lastTime=null, timer=null;
+  const videoStatus=document.createElement("div");videoStatus.className="pill";videoStatus.style.marginTop="12px";videoStatus.textContent=q.video_url?T("videoProgress")+": 0% · "+T("speedLimit"):"";
   if(q.video_url){
-    const box=document.createElement("div");box.style.marginTop="14px";
-    const vh=document.createElement("h3");vh.textContent="🎥 "+(lang==="ar"?"الفيديو":"Vidéo");box.appendChild(vh);
+    const box=document.createElement("div");box.style.marginTop="14px";const vh=document.createElement("h3");vh.textContent="🎥 "+(lang==="ar"?"الفيديو":"Vidéo");box.appendChild(vh);
     const yt=q.video_url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([^?&/]+)/i);
-    if(yt){const iframe=document.createElement("iframe");iframe.src="https://www.youtube.com/embed/"+encodeURIComponent(yt[1]);iframe.title=title;iframe.allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";iframe.allowFullscreen=true;iframe.loading="lazy";iframe.style.cssText="width:100%;aspect-ratio:16/9;border:0;border-radius:14px";box.appendChild(iframe);}
-    else{const a=document.createElement("a");a.className="btn";a.target="_blank";a.rel="noopener";a.href=q.video_url;a.textContent=T("watch");box.appendChild(a);}
-    card.appendChild(box);
+    if(yt){
+      const holder=document.createElement("div");holder.id="yt-player-"+Date.now();holder.style.cssText="width:100%;aspect-ratio:16/9;border-radius:14px;overflow:hidden";box.appendChild(holder);box.appendChild(videoStatus);card.appendChild(box);
+      await loadYouTubeApi();
+      player=new YT.Player(holder.id,{videoId:yt[1],playerVars:{controls:1,rel:0,playsinline:1,enablejsapi:1,origin:location.origin},events:{
+        onReady:e=>{durationSeconds=e.target.getDuration()||0;e.target.setPlaybackRate(1);},
+        onPlaybackRateChange:e=>{if(Number(e.data)>1.5){e.target.setPlaybackRate(1.5);toast(T("speedLimit"));}},
+        onStateChange:e=>{if(e.data===YT.PlayerState.PLAYING)lastTime=e.target.getCurrentTime();if(e.data===YT.PlayerState.ENDED){videoCompleted=true;watchedSeconds=Math.max(watchedSeconds,durationSeconds);videoStatus.textContent=T("videoCompleted")+" · "+T("speedLimit");}}
+      }});
+      timer=setInterval(()=>{if(!player||!player.getPlayerState)return;const state=player.getPlayerState(),now=player.getCurrentTime()||0;durationSeconds=player.getDuration()||durationSeconds;if(state===YT.PlayerState.PLAYING){if(lastTime!==null){const delta=now-lastTime;if(delta>0&&delta<=2.5)watchedSeconds+=delta;}lastTime=now;}else lastTime=null;const pct=durationSeconds?Math.min(100,Math.round(watchedSeconds/durationSeconds*100)):0;if(!videoCompleted)videoStatus.textContent=T("videoProgress")+": "+pct+"% · "+T("speedLimit");},500);
+    }else{const a=document.createElement("a");a.className="btn";a.target="_blank";a.rel="noopener";a.href=q.video_url;a.textContent=T("watch");box.appendChild(a);const note=document.createElement("p");note.className="small muted";note.textContent=lang==="ar"?"افتح الفيديو وشاهده كاملًا ثم ارجع لإرسال الملخص.":"Regardez la vidéo entièrement puis revenez envoyer le résumé.";box.appendChild(note);card.appendChild(box);}
   }else{const p2=document.createElement("p");p2.className="muted small";p2.textContent=T("noVideo");card.appendChild(p2);}
   if(q.pdf_url){const a=document.createElement("a");a.className="btn alt";a.target="_blank";a.rel="noopener";a.href=q.pdf_url;a.textContent="📄 "+T("openPdf");a.style.marginTop="12px";card.appendChild(a);}
-  else{const p3=document.createElement("p");p3.className="muted small";p3.textContent=T("noPdf");card.appendChild(p3);}
   if(action){const box=document.createElement("div");box.className="card";box.style.marginTop="14px";const h3=document.createElement("h3");h3.textContent=lang==="ar"?"✅ مهمتك العملية":"✅ Action";box.appendChild(h3);const p=document.createElement("p");p.textContent=action;p.style.lineHeight="1.9";box.appendChild(p);card.appendChild(box);}
   if(reflection){const box=document.createElement("div");box.className="card";box.style.marginTop="14px";const h3=document.createElement("h3");h3.textContent=lang==="ar"?"🧠 سؤال للتفكير":"🧠 Réflexion";box.appendChild(h3);const p=document.createElement("p");p.textContent=reflection;p.style.lineHeight="1.9";box.appendChild(p);card.appendChild(box);}
   if(sourceNote){const p=document.createElement("p");p.className="small muted";p.style.marginTop="14px";p.textContent=sourceNote;card.appendChild(p);}
-  const done=document.createElement("button");done.className="btn";done.style.marginTop="14px";done.textContent=T("finish");done.onclick=async()=>{modal.remove();await finishTraining(id);};card.appendChild(done);
-  modal.appendChild(card);document.body.appendChild(modal);modal.addEventListener("click",e=>{if(e.target===modal)modal.remove();});
+  const reportBox=document.createElement("div");reportBox.className="card";reportBox.style.marginTop="14px";const rh=document.createElement("h3");rh.textContent="📝 "+T("learningSummary");reportBox.appendChild(rh);const hint=document.createElement("p");hint.className="muted small";hint.textContent=T("learningSummaryHint");reportBox.appendChild(hint);const ta=document.createElement("textarea");ta.rows=6;ta.placeholder=T("learningSummaryHint");ta.style.cssText="width:100%;box-sizing:border-box;padding:12px;border:1px solid #ccd6df;border-radius:12px;line-height:1.8";reportBox.appendChild(ta);
+  const videoWarn=document.createElement("p");videoWarn.className="small muted";videoWarn.textContent=q.video_url?T("videoNotFinished"):"";reportBox.appendChild(videoWarn);
+  const done=document.createElement("button");done.className="btn";done.style.marginTop="12px";done.textContent=T("finish");done.disabled=Boolean(q.video_url);reportBox.appendChild(done);card.appendChild(reportBox);
+  done.onclick=async()=>{const text=ta.value.trim();if(text.length<10){toast(lang==="ar"?"اكتب ملخصًا من 10 أحرف على الأقل":"Écrivez un résumé d’au moins 10 caractères");return;}if(q.video_url&&!videoCompleted){toast(T("videoNotFinished"));return;}done.disabled=true;await finishTraining(id,text,videoCompleted,watchedSeconds,durationSeconds,modal,done);};
+  modal.appendChild(card);document.body.appendChild(modal);modal.addEventListener("click",e=>{if(e.target===modal)close.click();});
+  const cleanup=()=>{if(timer)clearInterval(timer);try{player&&player.destroy&&player.destroy();}catch(_){} };
+  const oldRemove=modal.remove.bind(modal);modal.remove=()=>{cleanup();oldRemove();};
 }
 
-async function finishTraining(id){
-  const {data,error}=await db.rpc("dxn_start_complete_training",{p_training_id:id});
-  if(error){toast(errText(error));return;}
-  toast(T("success"));dashboard();
+async function finishTraining(id,reportText,videoCompleted=false,watchedSeconds=0,durationSeconds=0,modal=null,buttonEl=null){
+  const {error}=await db.rpc("dxn_start_complete_training",{p_training_id:id,p_report_text:reportText,p_video_completed:videoCompleted,p_watched_seconds:watchedSeconds,p_duration_seconds:durationSeconds});
+  if(error){if(buttonEl)buttonEl.disabled=false;toast(errText(error));return;}if(modal)modal.remove();toast(T("success"));dashboard();
 }
 window.finishTraining=finishTraining;window.openTraining=openTraining;
 
@@ -280,10 +295,14 @@ async function adminTasks(body){
 }
 
 async function adminReports(body){
-  const {data,error}=await db.from("dxn_start_task_reports").select("id,member_id,task_id,report_text,status,admin_note,submitted_at,reviewed_at,dxn_start_members(full_name,dxn_member_id,whatsapp),dxn_start_tasks(title_ar,title_fr,points)").order("submitted_at",{ascending:false});
-  if(error){body.innerHTML=`<div class="card">${esc(errText(error))}</div>`;return;}
-  const rows=data||[];
-  body.innerHTML=`<div class="list">${rows.map(x=>`<div class="item"><div class="row between"><b>${esc(x.dxn_start_members?.full_name||"عضو")}</b><span class="pill">${esc(x.status||"submitted")}</span></div><p><b>${esc(lang==="ar"?x.dxn_start_tasks?.title_ar:x.dxn_start_tasks?.title_fr)}</b> · +${Number(x.dxn_start_tasks?.points)||0}</p><p class="small muted">${esc(x.submitted_at||"")}</p><div class="card" style="margin-top:8px;line-height:1.9">${esc(x.report_text)}</div><p class="small">${esc(x.admin_note||"")}</p></div>`).join("")||T("no")}</div>`;
+  const [{data:tasks,error:e1},{data:training,error:e2}]=await Promise.all([
+    db.from("dxn_start_task_reports").select("id,member_id,task_id,report_text,status,admin_note,submitted_at,reviewed_at,dxn_start_members(full_name,dxn_member_id,whatsapp),dxn_start_tasks(title_ar,title_fr,points)").order("submitted_at",{ascending:false}),
+    db.from("dxn_start_training_reports").select("id,member_id,training_id,report_text,video_completed,watched_seconds,duration_seconds,submitted_at,dxn_start_members(full_name,dxn_member_id,whatsapp),dxn_start_training(title_ar,title_fr)").order("submitted_at",{ascending:false})
+  ]);
+  if(e1||e2){body.innerHTML=`<div class="card">${esc(errText(e1||e2))}</div>`;return;}
+  const taskRows=tasks||[], trainingRows=training||[];
+  body.innerHTML=`<div class="card"><h3>📝 ${lang==="ar"?"تقارير المهام":"Rapports des tâches"}</h3><div class="list">${taskRows.map(x=>`<div class="item"><div class="row between"><b>${esc(x.dxn_start_members?.full_name||"عضو")}</b><span class="pill">${esc(x.status||"submitted")}</span></div><p><b>${esc(lang==="ar"?x.dxn_start_tasks?.title_ar:x.dxn_start_tasks?.title_fr)}</b> · +${Number(x.dxn_start_tasks?.points)||0}</p><p class="small muted">${esc(x.submitted_at||"")}</p><div class="card" style="margin-top:8px;line-height:1.9">${esc(x.report_text)}</div><p class="small">${esc(x.admin_note||"")}</p></div>`).join("")||T("no")}</div></div>
+  <div class="card" style="margin-top:14px"><h3>🎓 ${lang==="ar"?"ملخصات التدريب":"Résumés des formations"}</h3><div class="list">${trainingRows.map(x=>{const pct=x.duration_seconds?Math.min(100,Math.round(Number(x.watched_seconds||0)/Number(x.duration_seconds)*100)):100;return `<div class="item"><div class="row between"><b>${esc(x.dxn_start_members?.full_name||"عضو")}</b><span class="pill">${x.video_completed?"✓":"—"} ${pct}%</span></div><p><b>${esc(lang==="ar"?x.dxn_start_training?.title_ar:x.dxn_start_training?.title_fr)}</b></p><p class="small muted">${esc(x.submitted_at||"")}</p><div class="card" style="margin-top:8px;line-height:1.9">${esc(x.report_text)}</div></div>`;}).join("")||T("no")}</div></div>`;
 }
 async function adminMessages(body){
   const {data,error}=await db.from("dxn_start_message_templates").select("*").order("created_at",{ascending:false});if(error){body.innerHTML=`<div class="card">${esc(errText(error))}</div>`;return;}const rows=data||[];
