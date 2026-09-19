@@ -114,7 +114,18 @@ async function boot(){
   document.querySelector("#logoutBtn").classList.remove("hidden");
   const [{data:m,error:me},{data:a,error:ae}]=await Promise.all([db.from("dxn_start_members").select("*").eq("auth_user_id",session.user.id).maybeSingle(),db.from("dxn_start_admins").select("user_id").eq("user_id",session.user.id).maybeSingle()]);
   if(me){toast(errText(me));return;} if(ae){toast(errText(ae));return;}
-  member=m;isAdmin=Boolean(a); if(!member){await db.auth.signOut();auth("login",lang==="ar"?"لم يتم العثور على ملف العضو":"Profil membre introuvable");return;} render();
+  member=m;isAdmin=Boolean(a); if(!member){await db.auth.signOut();auth("login",lang==="ar"?"لم يتم العثور على ملف العضو":"Profil membre introuvable");return;} if(isAdmin){renderAdminOnly();return;} render();
+}
+
+function renderAdminOnly(){
+  document.documentElement.lang=lang;
+  document.documentElement.dir=lang==="ar"?"rtl":"ltr";
+  const b=document.querySelector("#langBtn");
+  if(b)b.textContent=lang==="ar"?"FR":"AR";
+  document.querySelector("#logoutBtn").classList.remove("hidden");
+  const screen=document.querySelector("#screen");
+  screen.innerHTML='<div class="container"><div id="adminOnlyPanel"></div></div>';
+  adminPanel(screen.querySelector("#adminOnlyPanel"));
 }
 
 async function dashboard(){
@@ -285,7 +296,7 @@ async function followupEditor(body){
   const {data:members,error}=await db.from("dxn_start_members").select("id,full_name,whatsapp").order("full_name");if(error){toast(errText(error));return;}const card=document.createElement("div");card.className="card";card.style.marginBottom="12px";card.innerHTML=`<h3>${T("newFollow")}</h3><div class="field"><label>${T("memberList")}</label><select id="fm">${(members||[]).map(x=>`<option value="${x.id}">${esc(x.full_name)} — ${esc(x.whatsapp||"")}</option>`).join("")}</select></div><div class="field"><label>${T("followAt")}</label><input id="fa" type="datetime-local"></div><div class="field"><label>${T("channel")}</label><select id="fc"><option value="whatsapp">WhatsApp</option><option value="phone">Phone</option><option value="platform">Platform</option></select></div><div class="field"><label>${T("notes")}</label><textarea id="fn" rows="3"></textarea></div><div class="row"><button class="btn" id="saveF">${T("save")}</button><button class="btn alt" id="cancelF">${T("cancel")}</button></div>`;body.prepend(card);card.querySelector("#cancelF").onclick=()=>card.remove();card.querySelector("#saveF").onclick=async()=>{const p={member_id:card.querySelector("#fm").value,followup_at:new Date(card.querySelector("#fa").value).toISOString(),channel:card.querySelector("#fc").value,status:"pending",notes:card.querySelector("#fn").value.trim()};if(!p.member_id||!card.querySelector("#fa").value){toast(lang==="ar"?"اختر العضو والموعد":"Choisissez le membre et la date");return;}const r=await db.from("dxn_start_followups").insert(p);if(r.error){toast(errText(r.error));return;}toast(T("followSaved"));adminFollowups(body);};
 }
 
-function render(){document.documentElement.lang=lang;document.documentElement.dir=lang==="ar"?"rtl":"ltr";const b=document.querySelector("#langBtn");if(b)b.textContent=lang==="ar"?"FR":"AR";if(member)dashboard();else auth();}
+function render(){document.documentElement.lang=lang;document.documentElement.dir=lang==="ar"?"rtl":"ltr";const b=document.querySelector("#langBtn");if(b)b.textContent=lang==="ar"?"FR":"AR";if(member){if(isAdmin)renderAdminOnly();else dashboard();}else auth();}
 
 document.querySelector("#langBtn").onclick=setLang;
 document.querySelector("#logoutBtn").onclick=async()=>{if(db)await db.auth.signOut();member=null;isAdmin=false;render();};
