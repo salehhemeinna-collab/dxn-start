@@ -6,6 +6,7 @@ let lang = localStorage.getItem("dxn_lang") || "ar";
 let member = null;
 let isAdmin = false;
 let trainingCache = [];
+let taskCache = [];
 
 const tr = {
   ar: {
@@ -37,7 +38,7 @@ const tr = {
     confirmDelete:"هل تريد محو هذا العنصر؟", error:"حدث خطأ", memberSaved:"تم تحديث العضو",
     taskSaved:"تم تحديث المهمة", messageSaved:"تم تحديث الرسالة", followSaved:"تم حفظ المتابعة",
     all:"الكل", completedTraining:"تدريبات مكتملة", inactiveLong:"غير متفاعل", start90:"90 يوم",
-    goal90:"هدف 90 يوم", startDate:"تاريخ البداية", currentDay:"اليوم الحالي", active90:"نشط في 90 يوم"
+    goal90:"هدف 90 يوم", startDate:"تاريخ البداية", currentDay:"اليوم الحالي", active90:"نشط في 90 يوم", taskReport:"تقرير المهمة", reportPrompt:"اكتب باختصار ما أنجزته في هذه المهمة، وما النتيجة التي وصلت إليها أو ما الخطوة التالية.", sendReport:"إرسال التقرير", reportSent:"تم إرسال التقرير وتسجيل إنجاز المهمة.", reportRequired:"التقرير مطلوب", reports:"تقارير المهام", reportText:"نص التقرير"
   },
   fr: {
     login:"Connexion", register:"Créer un compte", name:"Nom complet", age:"Âge", wa:"Numéro WhatsApp",
@@ -64,7 +65,7 @@ const tr = {
     changeStatus:"Changer le statut", addFollowup:"Ajouter un suivi", saveMember:"Enregistrer le membre", adminOnly:"Administrateur seulement",
     confirmDelete:"Supprimer cet élément ?", error:"Une erreur est survenue", memberSaved:"Membre mis à jour", taskSaved:"Tâche mise à jour",
     messageSaved:"Message mis à jour", followSaved:"Suivi enregistré", all:"Tous", completedTraining:"Formations terminées",
-    inactiveLong:"Inactifs", start90:"90 jours", goal90:"Objectif 90 jours", startDate:"Date de début", currentDay:"Jour actuel", active90:"Actif 90 jours"
+    inactiveLong:"Inactifs", start90:"90 jours", goal90:"Objectif 90 jours", startDate:"Date de début", currentDay:"Jour actuel", active90:"Actif 90 jours", taskReport:"Rapport de tâche", reportPrompt:"Qu’avez-vous réalisé dans cette tâche ? Écrivez brièvement l’action, le résultat ou la prochaine étape.", sendReport:"Envoyer le rapport", reportSent:"Rapport envoyé et tâche enregistrée.", reportRequired:"Rapport requis", reports:"Rapports des tâches", reportText:"Texte du rapport"
   }
 };
 
@@ -114,7 +115,7 @@ async function boot(){
   document.querySelector("#logoutBtn").classList.remove("hidden");
   const [{data:m,error:me},{data:a,error:ae}]=await Promise.all([db.from("dxn_start_members").select("*").eq("auth_user_id",session.user.id).maybeSingle(),db.from("dxn_start_admins").select("user_id").eq("user_id",session.user.id).maybeSingle()]);
   if(me){toast(errText(me));return;} if(ae){toast(errText(ae));return;}
-  member=m;isAdmin=Boolean(a); if(!member){await db.auth.signOut();auth("login",lang==="ar"?"لم يتم العثور على ملف العضو":"Profil membre introuvable");return;} if(isAdmin){renderAdminOnly();return;} render();
+  member=m;isAdmin=Boolean(a); if(!member){await db.auth.signOut();auth("login",lang==="ar"?"لم يتم العثور على ملف العضو":"Profil membre introuvable");return;} if(isAdmin){renderAdminOnly();return;}
 }
 
 function renderAdminOnly(){
@@ -152,9 +153,9 @@ async function loadTab(type){
   }
   if(type==="tasks"){
     const [{data:list,error:e1},{data:completed,error:e2}]=await Promise.all([db.from("dxn_start_tasks").select("*").eq("is_active",true).order("day_number"),db.from("dxn_start_task_completions").select("task_id").eq("member_id",member.id)]);
-    if(e1||e2){panel.innerHTML=`<div class="card">${esc(errText(e1||e2))}</div>`;return;}const done=new Set((completed||[]).map(x=>x.task_id));
-    panel.innerHTML=`<div class="list">${(list||[]).map(q=>`<div class="item"><div class="row between"><b>${esc(lang==="ar"?q.title_ar:q.title_fr)}</b><span class="pill">+${Number(q.points)||0}</span></div><p class="small muted">${esc(lang==="ar"?q.description_ar:q.description_fr)}</p><button class="btn alt" data-finish-task="${q.id}" data-points="${Number(q.points)||0}">${done.has(q.id)?T("done"):(lang==="ar"?"إتمام المهمة":"Terminer")}</button></div>`).join("")||T("no")}</div>`;
-    panel.querySelectorAll("[data-finish-task]").forEach(b=>b.onclick=()=>finishTask(b.dataset.finishTask,Number(b.dataset.points)||0));return;
+    if(e1||e2){panel.innerHTML=`<div class="card">${esc(errText(e1||e2))}</div>`;return;}taskCache=list||[];const done=new Set((completed||[]).map(x=>x.task_id));
+    panel.innerHTML=`<div class="list">${taskCache.map(q=>`<div class="item"><div class="row between"><b>${esc(lang==="ar"?q.title_ar:q.title_fr)}</b><span class="pill">+${Number(q.points)||0}</span></div><p class="small muted">${esc(lang==="ar"?q.description_ar:q.description_fr)}</p>${!done.has(q.id)?`<p class="small pill">📝 ${T("reportRequired")}</p>`:""}<button class="btn alt" data-finish-task="${q.id}">${done.has(q.id)?T("done"):(lang==="ar"?T("taskReport"):"Rapport")}</button></div>`).join("")||T("no")}</div>`;
+    panel.querySelectorAll("[data-finish-task]").forEach(b=>b.onclick=()=>finishTask(b.dataset.finishTask));return;
   }
   if(type==="profile"){
     panel.innerHTML=`<div class="card"><h3>${T("profile")}</h3><p><b>${T("name")}:</b> ${esc(member.full_name)}</p><p><b>${T("age")}:</b> ${esc(member.age||"—")}</p><p><b>${T("wa")}:</b> ${esc(member.whatsapp)}</p><p><b>${T("id")}:</b> ${esc(member.dxn_member_id)}</p><p><b>${T("city")}:</b> ${esc(member.city||"—")}</p><div class="field"><label>${T("goal")}</label>${selectField("goal",member.goal||"")}</div><div class="field"><label>${T("time")}</label>${selectField("time",member.daily_time||"")}</div><button class="btn" onclick="saveProfile()">${T("save")}</button></div>`;return;
@@ -206,23 +207,37 @@ async function openTraining(id){
 }
 
 async function finishTraining(id){
-  const {data:existing}=await db.from("dxn_start_progress").select("completed").eq("member_id",member.id).eq("training_id",id).maybeSingle();if(existing?.completed){toast(T("done"));return;}
-  const {error}=await db.from("dxn_start_progress").upsert({member_id:member.id,training_id:id,completed:true,completed_at:new Date().toISOString()},{onConflict:"member_id,training_id"});if(error){toast(errText(error));return;}
-  const {error:pe}=await db.from("dxn_start_points").insert({member_id:member.id,points:10,reason:"training_completed"});if(pe){toast(errText(pe));return;}toast(T("success"));dashboard();
+  const {data,error}=await db.rpc("dxn_start_complete_training",{p_training_id:id});
+  if(error){toast(errText(error));return;}
+  toast(T("success"));dashboard();
 }
 window.finishTraining=finishTraining;window.openTraining=openTraining;
 
-async function finishTask(id,points){
-  const {data:existing}=await db.from("dxn_start_task_completions").select("task_id").eq("member_id",member.id).eq("task_id",id).maybeSingle();if(existing){toast(T("done"));return;}
-  const {error}=await db.from("dxn_start_task_completions").insert({member_id:member.id,task_id:id,completed_at:new Date().toISOString()});if(error){toast(errText(error));return;}
-  const {error:pe}=await db.from("dxn_start_points").insert({member_id:member.id,points:Number(points)||0,reason:"task_completed"});if(pe){toast(errText(pe));return;}toast(T("success"));dashboard();
+function finishTask(id){
+  const q=taskCache.find(x=>x.id===id);if(!q)return;
+  showTaskReportModal(q);
+}
+function showTaskReportModal(q){
+  const modal=document.createElement("div");modal.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.58);z-index:9999;padding:16px;overflow:auto";
+  const card=document.createElement("div");card.style.cssText="max-width:680px;margin:35px auto;background:#fff;border-radius:20px;padding:20px;direction:"+(lang==="ar"?"rtl":"ltr");
+  const close=document.createElement("button");close.className="btn alt";close.textContent="✕";close.onclick=()=>modal.remove();card.appendChild(close);
+  const h=document.createElement("h2");h.textContent=lang==="ar"?q.title_ar:q.title_fr;card.appendChild(h);
+  const p=document.createElement("p");p.className="muted";p.textContent=lang==="ar"?(q.report_prompt_ar||T("reportPrompt")):(q.report_prompt_fr||T("reportPrompt"));p.style.lineHeight="1.9";card.appendChild(p);
+  const ta=document.createElement("textarea");ta.rows=8;ta.placeholder=lang==="ar"?"اكتب تقريرك هنا...":"Écrivez votre rapport ici...";ta.style.cssText="width:100%;margin-top:10px;padding:12px;border:1px solid #ccd6df;border-radius:12px;box-sizing:border-box;line-height:1.8";card.appendChild(ta);
+  const send=document.createElement("button");send.className="btn";send.style.marginTop="12px";send.textContent=T("sendReport");send.onclick=async()=>{const text=ta.value.trim();if(text.length<5){toast(lang==="ar"?"اكتب تقريرًا قصيرًا على الأقل":"Écrivez au moins un court rapport");return;}send.disabled=true;await submitTaskReport(q.id,text,modal,send);};card.appendChild(send);
+  modal.appendChild(card);document.body.appendChild(modal);modal.addEventListener("click",e=>{if(e.target===modal)modal.remove();});
+}
+async function submitTaskReport(id,text,modal,send){
+  const {error}=await db.rpc("dxn_start_submit_task_report",{p_task_id:id,p_report_text:text});
+  if(error){if(send)send.disabled=false;toast(errText(error));return;}
+  if(modal)modal.remove();toast(T("reportSent"));dashboard();
 }
 window.finishTask=finishTask;
 
 async function saveProfile(){const {error}=await db.from("dxn_start_members").update({goal:document.querySelector("#goal").value,daily_time:document.querySelector("#time").value}).eq("id",member.id);if(error){toast(errText(error));return;}member.goal=document.querySelector("#goal").value;member.daily_time=document.querySelector("#time").value;toast(T("success"));dashboard();}
 window.saveProfile=saveProfile;
 
-function adminNav(panel){return `<div class="tabs" id="adminTabs"><button class="tab active" data-admin="overview">${T("overview")}</button><button class="tab" data-admin="members">${T("memberList")}</button><button class="tab" data-admin="training">${T("content")}</button><button class="tab" data-admin="tasks">${T("tasksAdmin")}</button><button class="tab" data-admin="messages">${T("messages")}</button><button class="tab" data-admin="followups">${T("followups")}</button></div><div id="adminBody" style="margin-top:14px"></div>`;}
+function adminNav(panel){return `<div class="tabs" id="adminTabs"><button class="tab active" data-admin="overview">${T("overview")}</button><button class="tab" data-admin="members">${T("memberList")}</button><button class="tab" data-admin="training">${T("content")}</button><button class="tab" data-admin="tasks">${T("tasksAdmin")}</button><button class="tab" data-admin="reports">${T("reports")}</button><button class="tab" data-admin="messages">${T("messages")}</button><button class="tab" data-admin="followups">${T("followups")}</button></div><div id="adminBody" style="margin-top:14px"></div>`;}
 
 async function adminPanel(panel){
   panel.innerHTML=`<div class="card"><h2>${T("adminTitle")}</h2><p class="muted">${T("adminIntro")}</p>${adminNav(panel)}</div>`;
@@ -238,6 +253,7 @@ async function adminSection(type,body){
   if(type==="members"){await adminMembers(body);return;}
   if(type==="training"){await adminTraining(body);return;}
   if(type==="tasks"){await adminTasks(body);return;}
+  if(type==="reports"){await adminReports(body);return;}
   if(type==="messages"){await adminMessages(body);return;}
   if(type==="followups"){await adminFollowups(body);return;}
 }
@@ -260,9 +276,15 @@ async function adminTraining(body){
 async function adminTasks(body){
   const {data,error}=await db.from("dxn_start_tasks").select("*").order("day_number");if(error){body.innerHTML=`<div class="card">${esc(errText(error))}</div>`;return;}const rows=data||[];
   body.innerHTML=`<button class="btn" id="addTask">+ ${T("add")}</button><div id="taskList" class="list" style="margin-top:12px"></div>`;const list=body.querySelector("#taskList");
-  const form=(x={},isNew=false)=>{const d=document.createElement("div");d.className="card";d.style.marginBottom="12px";d.innerHTML=`<div class="field"><label>${T("taskTitleAr")}</label><input data-f="title_ar" value="${esc(x.title_ar||"")}"></div><div class="field"><label>${T("taskTitleFr")}</label><input data-f="title_fr" value="${esc(x.title_fr||"")}"></div><div class="field"><label>${T("descAr")}</label><textarea data-f="description_ar" rows="2">${esc(x.description_ar||"")}</textarea></div><div class="field"><label>${T("descFr")}</label><textarea data-f="description_fr" rows="2">${esc(x.description_fr||"")}</textarea></div><div class="field"><label>${T("day")}</label><input data-f="day_number" type="number" min="1" value="${Number(x.day_number)||1}"></div><div class="field"><label>${T("taskPoints")}</label><input data-f="points" type="number" min="0" value="${Number(x.points)||0}"></div><label><input data-f="is_active" type="checkbox" ${x.is_active!==false?"checked":""}> ${T("activeTask")}</label><div class="row" style="margin-top:10px"><button class="btn" data-save>${isNew?T("add"):T("saveChanges")}</button><button class="btn alt" data-delete>${T("remove")}</button></div>`;d.querySelector("[data-save]").onclick=async()=>{const p={title_ar:d.querySelector('[data-f="title_ar"]').value.trim(),title_fr:d.querySelector('[data-f="title_fr"]').value.trim(),description_ar:d.querySelector('[data-f="description_ar"]').value.trim(),description_fr:d.querySelector('[data-f="description_fr"]').value.trim(),day_number:Number(d.querySelector('[data-f="day_number"]').value)||1,points:Number(d.querySelector('[data-f="points"]').value)||0,is_active:d.querySelector('[data-f="is_active"]').checked};if(!p.title_ar||!p.title_fr){toast(lang==="ar"?"يرجى كتابة العنوانين":"Veuillez renseigner les deux titres");return;}const r=isNew?await db.from("dxn_start_tasks").insert(p):await db.from("dxn_start_tasks").update(p).eq("id",x.id);if(r.error){toast(errText(r.error));return;}toast(T("taskSaved"));adminTasks(body);};d.querySelector("[data-delete]").onclick=async()=>{if(!x.id){d.remove();return;}if(!confirm(T("confirmDelete")))return;const cr=await db.from("dxn_start_task_completions").delete().eq("task_id",x.id);if(cr.error){toast(errText(cr.error));return;}const r=await db.from("dxn_start_tasks").delete().eq("id",x.id);if(r.error){toast(errText(r.error));return;}adminTasks(body);};return d;};rows.forEach(x=>list.appendChild(form(x)));body.querySelector("#addTask").onclick=()=>list.prepend(form({title_ar:"مهمة جديدة",title_fr:"Nouvelle tâche",day_number:1,points:10,is_active:true},true));
+  const form=(x={},isNew=false)=>{const d=document.createElement("div");d.className="card";d.style.marginBottom="12px";d.innerHTML=`<div class="field"><label>${T("taskTitleAr")}</label><input data-f="title_ar" value="${esc(x.title_ar||"")}"></div><div class="field"><label>${T("taskTitleFr")}</label><input data-f="title_fr" value="${esc(x.title_fr||"")}"></div><div class="field"><label>${T("descAr")}</label><textarea data-f="description_ar" rows="2">${esc(x.description_ar||"")}</textarea></div><div class="field"><label>${T("descFr")}</label><textarea data-f="description_fr" rows="2">${esc(x.description_fr||"")}</textarea></div><div class="field"><label>${T("day")}</label><input data-f="day_number" type="number" min="1" value="${Number(x.day_number)||1}"></div><div class="field"><label>${T("taskPoints")}</label><input data-f="points" type="number" min="0" value="${Number(x.points)||0}"></div><div class="field"><label>${T("reportPrompt")}</label><textarea data-f="report_prompt_ar" rows="3">${esc(x.report_prompt_ar||"")}</textarea></div><div class="field"><label>Report prompt FR</label><textarea data-f="report_prompt_fr" rows="3">${esc(x.report_prompt_fr||"")}</textarea></div><label><input data-f="report_required" type="checkbox" ${x.report_required!==false?"checked":""}> ${T("reportRequired")}</label><label><input data-f="is_active" type="checkbox" ${x.is_active!==false?"checked":""}> ${T("activeTask")}</label><div class="row" style="margin-top:10px"><button class="btn" data-save>${isNew?T("add"):T("saveChanges")}</button><button class="btn alt" data-delete>${T("remove")}</button></div>`;d.querySelector("[data-save]").onclick=async()=>{const p={title_ar:d.querySelector('[data-f="title_ar"]').value.trim(),title_fr:d.querySelector('[data-f="title_fr"]').value.trim(),description_ar:d.querySelector('[data-f="description_ar"]').value.trim(),description_fr:d.querySelector('[data-f="description_fr"]').value.trim(),day_number:Number(d.querySelector('[data-f="day_number"]').value)||1,points:Number(d.querySelector('[data-f="points"]').value)||0,report_prompt_ar:d.querySelector('[data-f="report_prompt_ar"]').value.trim(),report_prompt_fr:d.querySelector('[data-f="report_prompt_fr"]').value.trim(),report_required:d.querySelector('[data-f="report_required"]').checked,is_active:d.querySelector('[data-f="is_active"]').checked};if(!p.title_ar||!p.title_fr){toast(lang==="ar"?"يرجى كتابة العنوانين":"Veuillez renseigner les deux titres");return;}const r=isNew?await db.from("dxn_start_tasks").insert(p):await db.from("dxn_start_tasks").update(p).eq("id",x.id);if(r.error){toast(errText(r.error));return;}toast(T("taskSaved"));adminTasks(body);};d.querySelector("[data-delete]").onclick=async()=>{if(!x.id){d.remove();return;}if(!confirm(T("confirmDelete")))return;const cr=await db.from("dxn_start_task_completions").delete().eq("task_id",x.id);if(cr.error){toast(errText(cr.error));return;}const r=await db.from("dxn_start_tasks").delete().eq("id",x.id);if(r.error){toast(errText(r.error));return;}adminTasks(body);};return d;};rows.forEach(x=>list.appendChild(form(x)));body.querySelector("#addTask").onclick=()=>list.prepend(form({title_ar:"مهمة جديدة",title_fr:"Nouvelle tâche",day_number:1,points:10,is_active:true},true));
 }
 
+async function adminReports(body){
+  const {data,error}=await db.from("dxn_start_task_reports").select("id,member_id,task_id,report_text,status,admin_note,submitted_at,reviewed_at,dxn_start_members(full_name,dxn_member_id,whatsapp),dxn_start_tasks(title_ar,title_fr,points)").order("submitted_at",{ascending:false});
+  if(error){body.innerHTML=`<div class="card">${esc(errText(error))}</div>`;return;}
+  const rows=data||[];
+  body.innerHTML=`<div class="list">${rows.map(x=>`<div class="item"><div class="row between"><b>${esc(x.dxn_start_members?.full_name||"عضو")}</b><span class="pill">${esc(x.status||"submitted")}</span></div><p><b>${esc(lang==="ar"?x.dxn_start_tasks?.title_ar:x.dxn_start_tasks?.title_fr)}</b> · +${Number(x.dxn_start_tasks?.points)||0}</p><p class="small muted">${esc(x.submitted_at||"")}</p><div class="card" style="margin-top:8px;line-height:1.9">${esc(x.report_text)}</div><p class="small">${esc(x.admin_note||"")}</p></div>`).join("")||T("no")}</div>`;
+}
 async function adminMessages(body){
   const {data,error}=await db.from("dxn_start_message_templates").select("*").order("created_at",{ascending:false});if(error){body.innerHTML=`<div class="card">${esc(errText(error))}</div>`;return;}const rows=data||[];
   body.innerHTML=`<button class="btn" id="addMsg">+ ${T("add")}</button><div id="msgList" class="list" style="margin-top:12px"></div>`;const list=body.querySelector("#msgList");
