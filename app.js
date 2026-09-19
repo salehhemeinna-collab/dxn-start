@@ -115,7 +115,7 @@ async function boot(){
   document.querySelector("#logoutBtn").classList.remove("hidden");
   const [{data:m,error:me},{data:a,error:ae}]=await Promise.all([db.from("dxn_start_members").select("*").eq("auth_user_id",session.user.id).maybeSingle(),db.from("dxn_start_admins").select("user_id").eq("user_id",session.user.id).maybeSingle()]);
   if(me){toast(errText(me));return;} if(ae){toast(errText(ae));return;}
-  member=m;isAdmin=Boolean(a); if(!member){await db.auth.signOut();auth("login",lang==="ar"?"لم يتم العثور على ملف العضو":"Profil membre introuvable");return;} if(isAdmin){renderAdminOnly();return;}
+  member=m;isAdmin=Boolean(a); if(!member){await db.auth.signOut();auth("login",lang==="ar"?"لم يتم العثور على ملف العضو":"Profil membre introuvable");return;} if(isAdmin){renderAdminOnly();return;} await dashboard();
 }
 
 function renderAdminOnly(){
